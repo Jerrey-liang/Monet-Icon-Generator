@@ -1,0 +1,7 @@
+# Runtime-downloaded Lawnicons resources.
+/lawnicons_assets/
+
+# Local caches and editor state.
+/temp/
+/.vs/
+__pycache__/

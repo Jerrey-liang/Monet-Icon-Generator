@@ -17,6 +17,7 @@
 
 ### Optimizations
 - [x] Progress bar to show processing status
+- [x] Get the current Monet color configuration through ADB
 - [x] Preview color configuration
 - [x] Color configuration validation and partial auto-repair
 - [x] Use of `theme_fallback.xml` to optimize package size
@@ -25,8 +26,8 @@
 ### Limitations
 
 The `icons` package does not support dynamic Monet extraction `@android:color/system_accent1_*`.  
-You need to manually obtain the current Monet color configuration (method provided later).  
-It is recommended to **re-run the script each time you change the wallpaper** and reapply the generated files.
+You need to obtain the current Monet color configuration through ADB before generating icons.  
+It is recommended to **re-run Feature 1 after each wallpaper change**, regenerate the package, and reapply the generated files.
 
 ## 🖼️ Preview
 
@@ -44,6 +45,10 @@ It is recommended to **re-run the script each time you change the wallpaper** an
 
   - Phone must have an unlocked Bootloader and root access
 
+  - PC must have [Android SDK Platform Tools](https://developer.android.com/tools/releases/platform-tools) installed, and `adb` must be available in PowerShell
+
+  - Phone must have USB debugging enabled, and the USB debugging authorization prompt must be accepted after connecting to the PC
+
   - Script requires Python environment with Pillow installed
 
 ```
@@ -52,12 +57,28 @@ pip install Pillow
 
 ### 1. Obtain Current Monet Color Configuration
 
-Install [Material You Color Previewer](https://github.com/Smooth-E/monet-color-previewer/releases/download/v1.2/Material-You-Color-Previewer-v1.2.apk) on your phone.
+Run the script and choose `Feature 1`. The script will read the current `system_accent1_*` colors from the phone through ADB and write them to `colors.json` automatically.
 
-In the app’s main screen, tap the `palette 🎨` button (second from the right in the bottom bar).  
-From the `Copy options` menu, select `JSON` and then `Copy`.
+If fetching fails, run this in PowerShell first:
 
-Later, for `Feature 1` in this project, paste the copied JSON into the `colors.json` file.
+```
+adb devices
+```
+
+Confirm the device status is `device`, then run `Feature 1` again.
+
+`Feature 1` uses ADB lookup logic equivalent to this PowerShell snippet:
+
+```powershell
+$tones = @(0, 10, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000)
+
+foreach ($t in $tones) {
+    $name = "system_accent1_$t"
+    $value = adb shell cmd overlay lookup android "android:color/$name"
+    $value = $value.Trim()
+    Write-Output "$name = $value"
+}
+```
 
 ### 2. Run the Script
 
@@ -158,7 +179,7 @@ Note¹: `theme_fallback.xml` cannot be used when `Auto Dark Mode Switching` is e
 
 In Android 12+, a full set of dynamic coloring resources `system_accent*` and `system_neutral*` are provided under `@android:color/`. The system automatically generates and switches these values based on the wallpaper.
 
-Unfortunately, MIUI themes do not support reading these values dynamically. Therefore, the final approach is to **manually extract the resource values**, then **generate the finished icons**, and finally **package them for use**.
+Unfortunately, MIUI themes do not support reading these values dynamically. Therefore, the final approach is to **read these resource values through ADB**, then **generate the finished icons**, and finally **package them for use**.
 
 When drawing icon foregrounds and backgrounds, this project uses the `accent1` series:
 
@@ -166,6 +187,8 @@ When drawing icon foregrounds and backgrounds, this project uses the `accent1` s
 - Dark mode: Foreground `accent1_200`, Background `accent1_700`
 
 ### 4. How to Sync Lawnicons Updates
+
+If `lawnicons_assets/appfilter_plain.xml` or `lawnicons_assets/drawable.zip` is missing or damaged, the script downloads the latest stable Lawnicons APK and source package at startup, then regenerates those resource files automatically.
 
 Explanation of how to create `appfilter_plain.xml` and `drawable.zip`.
 
@@ -199,5 +222,3 @@ If I stop maintaining this project, you can still update icons yourself.
 ## 💖 Special Thanks
 
 [Lawnicons Project Homepage](https://github.com/LawnchairLauncher/lawnicons)
-
-[Material You Color Previewer Project Homepage](https://github.com/Smooth-E/monet-color-previewer)

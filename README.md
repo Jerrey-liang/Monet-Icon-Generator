@@ -17,6 +17,7 @@
 
 ### 功能优化
 - [x] 进度条显示处理进度
+- [x] 通过 ADB 获取当前 Monet 颜色配置
 - [x] 预览颜色配置
 - [x] 颜色配置有效性校验、一定程度自动修复
 - [x] 使用 `theme_fallback.xml` 优化成品包文件体积
@@ -24,7 +25,7 @@
 
 ### 弊端
 
-`icons` 图标包并不支持动态莫奈取色 `@android:color/system_accent1_*`，所以需要手动获取当前莫奈颜色配置（方法在后文会给出），并且推荐 **每次更换壁纸后需要重新运行一遍项目** 并应用相关文件。
+`icons` 图标包并不支持动态莫奈取色 `@android:color/system_accent1_*`，所以需要在生成前通过 ADB 获取当前莫奈颜色配置（方法在后文会给出），并且推荐 **每次更换壁纸后重新执行【功能1】并重新生成/应用相关文件**。
 
 ## 🖼️ 预览
 
@@ -42,6 +43,10 @@
 
   - 手机端需解锁 Bootloader 并获取 root 权限
 
+  - 电脑端需安装 [Android SDK Platform Tools](https://developer.android.com/tools/releases/platform-tools)，并确保 `adb` 可在 PowerShell 中直接运行
+
+  - 手机端需开启 USB 调试，连接电脑后允许调试授权
+
   - 脚本运行需 Python 环境，并已安装 Pillow 库
 
 ```
@@ -50,11 +55,28 @@ pip install Pillow
 
 ### 1. 获取手机当前 Monet 颜色配置
 
-手机端安装并打开 [Material You Color Previewer](https://github.com/Smooth-E/monet-color-previewer/releases/download/v1.2/Material-You-Color-Previewer-v1.2.apk)。
+运行脚本后选择 `功能1`，脚本会通过 ADB 读取手机当前的 `system_accent1_*` 颜色，并自动写入 `colors.json`。
 
-点击APP主界面 `底栏` 从右往左数第二个 `调色板🎨` 按钮，在出现的 `Copy options` 菜单中选择 `JSON` 选项，并 `Copy` 。
+如果获取失败，请先在 PowerShell 中执行：
 
-后续使用本项目的 `功能1` 将复制的内容完整粘贴至 `colors.json` 文件内。
+```
+adb devices
+```
+
+确认设备状态为 `device` 后，再重新执行 `功能1`。
+
+`功能1` 内部使用的 ADB 查询逻辑等价于下面这段 PowerShell：
+
+```powershell
+$tones = @(0, 10, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000)
+
+foreach ($t in $tones) {
+    $name = "system_accent1_$t"
+    $value = adb shell cmd overlay lookup android "android:color/$name"
+    $value = $value.Trim()
+    Write-Output "$name = $value"
+}
+```
 
 ### 2. 运行脚本
 
@@ -155,43 +177,40 @@ icons/
 
 在 Android 12+ 系统中，`@android:color/` 下提供了一整套 `system_accent*` 与 `system_neutral*` 动态取色资源，系统会根据壁纸自动生成并切换。
 
-可惜的是，小米主题并不支持动态读取这一系列值。所以我采用了先 **手动读取该系列资源值**，然后 **生成成品图标**，再 **打包使用** 的逻辑。
+可惜的是，小米主题并不支持动态读取这一系列值。所以我采用了先 **通过 ADB 读取该系列资源值**，然后 **生成成品图标**，再 **打包使用** 的逻辑。
 
 本项目在绘制图标前景与背景时，使用了其中的 `accent1` 系列：
 
 - 浅色模式：前景 `accent1_700`，背景 `accent1_100`
 - 深色模式：前景 `accent1_200`，背景 `accent1_700`
 
-### 4. 如何同步 `Lawnicons` 的更新
+### 4. `Lawnicons` 更新同步
 
-解释一下 `appfilter_plain.xml` 与 `drawable.zip` 的制作方法。
+脚本启动时会自动检查 [Lawnicons 发行版](https://github.com/LawnchairLauncher/lawnicons/releases) 的最新稳定版。
 
-如果我停更了，你也可以自己同步 `Lawnicons` 的新图标。
+当检测到本地 `lawnicons_assets/version.json` 记录的版本低于最新稳定版时，脚本会自动完成以下流程：
 
-1. 前往 [Lawnicons 发行版](https://github.com/LawnchairLauncher/lawnicons/releases) 下载最新的 apk 安装包，并在 [MT管理器](https://mt2.cn/download/) 中打开。
+1. 下载最新稳定版 APK 与对应源码包。
+2. 从 APK 的 `resources.arsc` 与二进制 XML 中还原 `appfilter_plain.xml`。
+3. 从源码包的 `svgs` 目录生成 215px 透明 PNG 图标，并打包为 `drawable.zip`。
+4. 校验 `appfilter_plain.xml` 中引用的 drawable 名称是否都能在 `drawable.zip` 中找到。
+5. 校验通过后，备份旧资源到 `lawnicons_assets/backup/`，再替换：
+   - `lawnicons_assets/appfilter_plain.xml`
+   - `lawnicons_assets/drawable.zip`
+   - `lawnicons_assets/version.json`
+6. 清理旧缓存，避免继续使用旧图标素材。
 
-2. 反编译 `/res/xml/appfilter.xml` → `appfilter_plain.xml`
+如果 `lawnicons_assets/appfilter_plain.xml` 或 `lawnicons_assets/drawable.zip` 被删除、损坏，脚本启动时会自动重新下载 Lawnicons 稳定版 APK 与源码包，并重新生成这些资源文件。
 
-   **具体方法**：定位到 `/res/xml/appfilter.xml` → `反编译` 方式打开文件 → 右上角三个点 `⋮` → `文件` → `导出为纯文本` → 保存为 `appfilter_plain.xml`
+如果网络不可用、下载失败、解析失败或图标对应关系校验失败，脚本会保留现有本地资源并继续运行，不会用不完整的新资源覆盖旧文件。
 
-   **❌️错误方法**：采用复制 `appfilter.xml` 内容的方法，会超出剪切板限制，可能导致文件内容不完整。
+如需临时跳过自动检查，可在运行前设置环境变量：
 
-3. 提取 `/res/drawable/` 目录下所有 `*_foreground.xml`。
-   
-   **具体方法**：定位到 `/res`，解压整个 `drawable` 文件夹到任意目录 `A`；在目录 `A` 中搜索 `_foreground.xml`，在搜索结果弹窗中，点击左下角的按钮 `↕`，在打开的界面中全选，移动到新的目录 `B`；删除目录 `A`。
-
-4. 批量重命名 `_foreground.xml` → `.xml`。
-
-5. 批量 XML 转换 PNG：下载 [Apktool M](https://maximoff.su/apktool/?lang=en)。在该应用的侧边栏，定位到刚才的目录 `B` 内，`全选`，`转换为PNG`，尺寸输入 `215`。再回到 MT管理器 ，搜索 `.png`，全部移动到新建的名为 `drawable` 的文件夹中。
-   
-   ⚠ 再说一遍，转换 PNG 时尺寸必须为 `215`，这很重要！
-
-6. 最后压缩这个 `drawable` 文件夹，得到 `drawable.zip`。
-
-   ⚠ 注意压缩的是这个文件夹，不是里面的文件。压缩包内部需要有一层 `drawable` 目录，然后里面是 png 素材。
+```powershell
+$env:MONET_SKIP_LAWNICONS_UPDATE = "1"
+python main.py
+```
 
 ## 💖 特别感谢
 
 [Lawnicons 项目主页](https://github.com/LawnchairLauncher/lawnicons)
-
-[Material You Color Previewer 项目主页](https://github.com/Smooth-E/monet-color-previewer)
