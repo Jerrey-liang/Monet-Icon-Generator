@@ -140,7 +140,7 @@ icons/
       │   └─ manifest.xml
       └─ ...
 ```
-方案由 [酷安@阿尼亚超爱吃花生](http://www.coolapk.com/u/10895092) 收集，我在此基础上整合成一键打包脚本。
+方案由 [酷安@阿尼亚超爱吃花生](http://www.coolapk.com/u/10895092) 收集
 
 ### 2. `theme_fallback.xml` 原理
 
