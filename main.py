@@ -914,8 +914,9 @@ def icon_package(switch_function, light_mode):
 
             # 再处理映射 JSON 里的
             for key, drawable in filtered_mapping.items():
-                if '/' in key:  # 活动名（全路径）
-                    folder = os.path.join(FANCY_ICONS_DIR, key)
+                if '/' in key:  # 包名/活动名 — 仅取包名作为文件夹名
+                    pkg = key.split('/', 1)[0]
+                    folder = os.path.join(FANCY_ICONS_DIR, pkg)
                 else:  # 包名
                     folder = os.path.join(FANCY_ICONS_DIR, key)
 
