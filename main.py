@@ -107,7 +107,8 @@ def normalize_adb_color(raw_value):
 
     hex_value = match.group(1).upper()
     if len(hex_value) == 8:
-        hex_value = hex_value[2:]
+        # 取后6位RGB，兼容 #AARRGGBB 和 #RRGGBBAA 两种格式
+        hex_value = hex_value[-6:]
     return f"#{hex_value}"
 
 def load_existing_colors():
@@ -1266,10 +1267,12 @@ def main():
             with open(description_xml_path, "r", encoding="utf-8") as f:
                 content = f.read()
             now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            pos = content.find("构建时间：")
-            if pos != -1:
-                pos += len("构建时间：")
-                content = content[:pos] + now_str + content[pos:]
+            # 用正则替换 "构建时间：" 后到行末或 '</' 前的内容，防止重复执行时时间戳累积
+            content = re.sub(
+                r'(构建时间：).*?(?=\n|</)',
+                r'\1' + now_str,
+                content
+            )
             with open(description_xml_path, "w", encoding="utf-8") as f:
                 f.write(content)
 
