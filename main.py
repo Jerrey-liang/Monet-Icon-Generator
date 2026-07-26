@@ -276,16 +276,11 @@ def create_theme_fallback_xml():
         mapping_data = json.load(f)
     filtered_mapping = {k: v for k, v in mapping_data.items() if not k.startswith("_comment-")}
 
+    # 构建 包名→drawable 字典：先填 appfilter，再用 name_mapping 覆盖
+    package_drawable = {}
+
     tree = ET.parse(APPFILTER_XML)
     root = tree.getroot()
-
-    output_lines = [
-        "<?xml version='1.0' encoding='utf-8' standalone='yes'?>",
-        "<MIUI_Theme_Values>"
-    ]
-
-    # 处理 appfilter 中的包名
-    written_packages = set()
     for item in root.findall("item"):
         component = item.attrib.get("component", "")
         drawable = item.attrib.get("drawable", "")
@@ -299,21 +294,25 @@ def create_theme_fallback_xml():
         pkg_name, cls_name = comp_str.split("/", 1)
         if "*" in cls_name:
             continue
-        if pkg_name in written_packages:
+        if pkg_name in package_drawable:
             continue
-        drawable_png = f"{drawable}.png"
-        output_lines.append(f'<drawable name="{pkg_name}.png">{drawable_png}</drawable>')
-        written_packages.add(pkg_name)
+        package_drawable[pkg_name] = drawable
 
-    # 处理 NAME_MAPPING 里的包名
+    # name_mapping 覆盖（带'/'的键提取包名）
     for key, drawable in filtered_mapping.items():
         if '/' in key:
             pkg_name = key.split('/', 1)[0]
         else:
             pkg_name = key
+        package_drawable[pkg_name] = drawable
+
+    output_lines = [
+        "<?xml version='1.0' encoding='utf-8' standalone='yes'?>",
+        "<MIUI_Theme_Values>"
+    ]
+    for pkg_name, drawable in package_drawable.items():
         drawable_png = f"{drawable}.png"
         output_lines.append(f'<drawable name="{pkg_name}.png">{drawable_png}</drawable>')
-
     output_lines.append("</MIUI_Theme_Values>")
 
     with open(THEME_FALLBACK_XML, "w", encoding="utf-8") as f:
@@ -881,44 +880,26 @@ def icon_package(switch_function, light_mode):
             k: v for k, v in mapping_data.items() if not k.startswith("_comment-")
         }
 
-        # 计算 total：唯一包名数量 + 映射内的键数量 - 日历
-        total = len(package_names) + len(filtered_mapping) - 1
+        # 构建 包名→drawable 字典：先填 appfilter，再用 name_mapping 覆盖
+        package_drawable = {}
+        for full_path, drawable in valid_items:
+            package_name = full_path.split('/')[0]
+            if package_name not in package_drawable:
+                package_drawable[package_name] = drawable
+        for key, drawable in filtered_mapping.items():
+            if '/' in key:
+                pkg = key.split('/', 1)[0]
+            else:
+                pkg = key
+            package_drawable[pkg] = drawable  # 覆盖 appfilter
+        package_drawable.pop("com.android.calendar", None)
+
+        total = len(package_drawable)
         current = 0
 
         with zipfile.ZipFile(OUTPUT_ICONS, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            # 初始化时直接跳过日历包
-            written_packages = {"com.android.calendar"}
-
-            # 先处理 appfilter 里的
-            for full_path, drawable in valid_items:
-                parts = full_path.split('/')
-                package_name = parts[0]
-
-                if package_name in written_packages:
-                    continue
-
+            for package_name, drawable in package_drawable.items():
                 folder = os.path.join(FANCY_ICONS_DIR, package_name)
-
-                src_light = os.path.join(PREPROCESS_DIR, f"{drawable}.png")
-                src_dark = os.path.join(PREPROCESS_NIGHT_DIR, f"{drawable}.png")
-                if not (os.path.exists(src_light) and os.path.exists(src_dark) and os.path.exists(SUB_XML_PATH)):
-                    continue
-
-                zipf.write(src_light, os.path.join(folder, "iconBg_0.png"))
-                zipf.write(src_dark, os.path.join(folder, "iconBg_1.png"))
-                zipf.write(SUB_XML_PATH, os.path.join(folder, "manifest.xml"))
-
-                written_packages.add(package_name)
-                current += 1
-                print_progress_bar(current, total)
-
-            # 再处理映射 JSON 里的
-            for key, drawable in filtered_mapping.items():
-                if '/' in key:  # 包名/活动名 — 仅取包名作为文件夹名
-                    pkg = key.split('/', 1)[0]
-                    folder = os.path.join(FANCY_ICONS_DIR, pkg)
-                else:  # 包名
-                    folder = os.path.join(FANCY_ICONS_DIR, key)
 
                 src_light = os.path.join(PREPROCESS_DIR, f"{drawable}.png")
                 src_dark = os.path.join(PREPROCESS_NIGHT_DIR, f"{drawable}.png")
